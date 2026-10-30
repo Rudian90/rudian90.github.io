@@ -123,3 +123,23 @@ label.f input,label.f select{text-transform:none;letter-spacing:0;font-weight:40
 .cloud-banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px;background:var(--surface);border:1.5px solid var(--sticker);border-radius:12px;padding:12px 14px}
 .cloud-banner p{margin:0;flex:1 1 220px;min-width:0;font-weight:600}
 .cloud-banner-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* Detaljvisning */
+.eyebrow{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.d-top{display:grid;grid-template-columns:150px 1fr;gap:16px;align-items:end}
+@media (max-width:440px){.d-top{grid-template-columns:120px 1fr}}
+.d-cover{width:100%}
+.d-info{display:flex;flex-direction:column;gap:4px;min-width:0;align-items:flex-start}
+.d-info h2{font-size:24px;line-height:1;text-wrap:balance;overflow-wrap:anywhere}
+.d-artist{margin:0;font-weight:600;overflow-wrap:anywhere}
+.d-meta{margin:0 0 6px;font-family:var(--f-mono);font-size:13px;color:var(--muted)}
+.d-tracks-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;border-bottom:2px solid var(--ink);padding-bottom:6px}
+.d-tracks-head h3{margin:0;font-family:var(--f-display);font-weight:900;font-stretch:72%;text-transform:uppercase;font-size:20px}
+.d-tracks-head span{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.tracks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.tracks .trk{display:grid;grid-template-columns:2.6em 1fr auto;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);align-items:baseline}
+.tracks .pos{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.tracks .tt{min-width:0;overflow-wrap:anywhere}
+.tracks .len{font-family:var(--f-mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.tracks .disc{padding:12px 0 4px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+#dStatus:empty{display:none}

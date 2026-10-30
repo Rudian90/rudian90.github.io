@@ -77,6 +77,7 @@ async function save(rec) {
     year: Number(rec.year) || null, format: rec.format === "CD" ? "CD" : "LP",
     addedAt: Number(rec.addedAt) || Date.now(), updatedAt: Number(rec.updatedAt) || Date.now(),
     coverUrl: rec.coverUrl || null, coverData: null,
+    src: rec.src || null, tracks: Array.isArray(rec.tracks) ? rec.tracks.slice(0, 200) : null,
   };
   if (rec.cover instanceof Blob) data.coverData = await thumbData(rec.cover);
   pending.add(rec.id);
@@ -94,6 +95,7 @@ async function toLocal(d) {
     id: d.id, artist: x.artist || "", album: x.album || "", year: x.year || null,
     format: x.format === "CD" ? "CD" : "LP", addedAt: x.addedAt || Date.now(), updatedAt: x.updatedAt || 0,
     coverUrl: x.coverUrl || null, cover: x.coverData ? await dataToBlob(x.coverData) : null,
+    src: x.src || null, tracks: Array.isArray(x.tracks) ? x.tracks : null,
   };
 }
 

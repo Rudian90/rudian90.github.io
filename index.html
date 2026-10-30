@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="styles.css?v=2.1">
+<link rel="stylesheet" href="styles.css?v=2.2">
 </head>
 <body>
 <div class="wrap">
@@ -32,7 +32,7 @@
     <label class="menu-file">Hent inn backup (importer)<input type="file" id="importFile" accept="application/json,.json"></label>
     <a href="privacy.html">Personvern</a>
     <p class="menu-note">Samlingen lagres bare på denne enheten. Albuminfo og cover hentes fra <a href="https://musicbrainz.org" target="_blank" rel="noopener">MusicBrainz</a> og Cover Art Archive.</p>
-    <p class="menu-note">Versjon 2.1</p>
+    <p class="menu-note">Versjon 2.2</p>
   </div>
 
   <div class="cloud-banner" id="cloudBanner" hidden>
@@ -112,8 +112,27 @@
     </div>
   </form>
 </div>
+<!-- Detaljvisning med sporliste -->
+<div class="overlay" id="dov" hidden>
+  <section class="sheet detail" aria-labelledby="dAlbum">
+    <div class="sheet-head"><span class="eyebrow">Plate</span><button class="x" type="button" id="dClose" aria-label="Lukk">×</button></div>
+    <div class="d-top">
+      <div class="cover d-cover" id="dCover"></div>
+      <div class="d-info">
+        <h2 id="dAlbum"></h2>
+        <p class="d-artist" id="dArtist"></p>
+        <p class="d-meta" id="dMeta"></p>
+        <button class="btn ghost small" type="button" id="dEdit">Rediger</button>
+      </div>
+    </div>
+    <div class="d-tracks-head"><h3>Spor</h3><span id="dTotal"></span></div>
+    <div class="status" id="dStatus" role="status"></div>
+    <button class="btn ghost small" type="button" id="dRetry" hidden>Prøv igjen</button>
+    <ol class="tracks" id="dTracks"></ol>
+  </section>
+</div>
 <div class="toast" id="toast" hidden></div>
-<script src="app.js?v=2.1"></script>
-<script type="module" src="cloud.js?v=2.1"></script>
+<script src="app.js?v=2.2"></script>
+<script type="module" src="cloud.js?v=2.2"></script>
 </body>
 </html>

@@ -150,7 +150,7 @@
       m.append(el("div", "al", r.album || "Uten tittel"), el("div", "ar", r.artist || ""), el("div", "yr", r.year ? String(r.year) : "—"));
       b.append(c, m);
       b.setAttribute("aria-label", `${r.artist} – ${r.album}, ${r.year || "ukjent år"}, ${r.format}`);
-      b.onclick = () => openForm(r);
+      b.onclick = () => openDetail(r);
       g.append(b);
     }
     return g;
@@ -206,7 +206,7 @@
     const art = r.artworkUrl100 || "";
     return {
       artist: r.artistName || "", album: (r.collectionName || "").replace(/ - (Single|EP)$/i, ""),
-      year: yearOf(r.releaseDate), format: null, rgid: null, relid: null,
+      year: yearOf(r.releaseDate), format: null, rgid: null, relid: null, itid: r.collectionId || null,
       type: r.collectionType === "Compilation" ? "Samling" : "",
       thumb: art || null, art: art ? art.replace(/\d+x\d+bb/, "600x600bb") : null,
     };
@@ -339,6 +339,7 @@
     }
   }
   async function choose(o) {
+    state.source = { rgid: o.rgid || null, relid: o.relid || null, dzid: o.dzid || null, itid: o.itid || null };
     $("fArtist").value = o.artist || "";
     $("fAlbum").value = o.album || "";
     if (o.year) $("fYear").value = o.year;
@@ -467,7 +468,7 @@
   function resetDup() { if (dupArmed) { dupArmed = false; $("saveBtn").textContent = "Lagre"; const st = $("saveStatus"); st.textContent = ""; st.className = "status"; } }
   ["fArtist", "fAlbum"].forEach((id) => $(id).addEventListener("input", resetDup));
   function openForm(r) {
-    state.editing = r; state.coverBlob = null; state.coverUrl = null; state.coverChanged = false;
+    state.editing = r; state.coverBlob = null; state.coverUrl = null; state.coverChanged = false; state.source = null;
     $("formTitle").textContent = r ? "Rediger plate" : "Ny plate";
     $("finder").hidden = !!r;
     $("fArtist").value = (r && r.artist) || ""; $("fAlbum").value = (r && r.album) || "";
@@ -500,6 +501,9 @@
     }
     const base = state.editing || { id: "r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), addedAt: Date.now(), cover: null, coverUrl: null };
     const rec = Object.assign({}, base, { artist, album, year, format: $("fFmt").value, updatedAt: Date.now() });
+    // Ny kilde valgt, eller artist/album endret: sporlisten må hentes på nytt
+    if (state.source) { rec.src = state.source; rec.tracks = null; }
+    else if (base.artist !== artist || base.album !== album || base.format !== rec.format) { rec.src = null; rec.tracks = null; }
     if (state.coverChanged) { rec.cover = state.coverBlob || null; rec.coverUrl = state.coverUrl || null; }
     $("saveBtn").disabled = true;
     try {
@@ -525,6 +529,118 @@
       render(); closeForm(); toast("Plata er slettet");
     } catch (err) { const s = $("saveStatus"); s.className = "status err"; s.textContent = "Kunne ikke slette. Prøv igjen."; }
   };
+
+  /* ---------------- Sporliste ---------------- */
+  const secs = (ms) => (ms ? Math.round(ms / 1000) : null);
+  function fromMbRelease(rel) {
+    const media = rel.media || [];
+    const out = [];
+    media.forEach((m, i) => (m.tracks || m["track-list"] || []).forEach((t) => out.push({
+      d: i + 1, p: String(t.number || t.position || ""), t: t.title || (t.recording && t.recording.title) || "", s: secs(t.length || (t.recording && t.recording.length)),
+    })));
+    return out;
+  }
+  const vinylish = (rel) => (rel.media || []).some((m) => /vinyl/i.test(m.format || ""));
+  const cdish = (rel) => (rel.media || []).some((m) => /cd/i.test(m.format || ""));
+  function pickRelease(list, format) {
+    const want = format === "CD" ? cdish : vinylish;
+    return list.find(want) || list[0];
+  }
+  async function tracksFromMbRg(rgid, format) {
+    const d = await mb(`/release?release-group=${rgid}&inc=recordings&limit=25`);
+    const rel = pickRelease((d.releases || []).filter((r) => (r.media || []).some((m) => (m.tracks || []).length)), format);
+    return rel ? fromMbRelease(rel) : [];
+  }
+  async function tracksFromDeezer(id) {
+    const d = await deezer(`album/${id}/tracks?limit=200`);
+    return (d.data || []).map((t) => ({ d: t.disk_number || 1, p: String(t.track_position || ""), t: t.title || "", s: t.duration || null }));
+  }
+  async function tracksFromItunes(id) {
+    const d = await itunes(`lookup?id=${id}&entity=song`);
+    return (d.results || []).filter((r) => r.wrapperType === "track")
+      .map((t) => ({ d: t.discNumber || 1, p: String(t.trackNumber || ""), t: t.trackName || "", s: secs(t.trackTimeMillis) }));
+  }
+  async function fetchTracks(rec) {
+    const src = rec.src || {};
+    const tries = [];
+    if (src.relid) tries.push(async () => fromMbRelease(await mb(`/release/${src.relid}?inc=recordings`)));
+    if (src.rgid) tries.push(() => tracksFromMbRg(src.rgid, rec.format));
+    if (src.dzid) tries.push(() => tracksFromDeezer(src.dzid));
+    if (src.itid) tries.push(() => tracksFromItunes(src.itid));
+    // Uten kjent kilde: søk på artist og album
+    tries.push(async () => {
+      const q = `release:"${luceneEsc(rec.album)}" AND artist:"${luceneEsc(rec.artist)}"`;
+      const d = await mb(`/release/?query=${encodeURIComponent(q)}&limit=10`);
+      const good = (d.releases || []).filter((r) => (r.score || 0) >= 80);
+      const rel = pickRelease(good, rec.format);
+      return rel ? fromMbRelease(await mb(`/release/${rel.id}?inc=recordings`)) : [];
+    });
+    tries.push(async () => {
+      const d = await deezer(`search/album?q=${encodeURIComponent(`artist:"${rec.artist}" album:"${rec.album}"`)}&limit=5`);
+      const hit = (d.data || []).find((a) => norm(a.title).startsWith(norm(rec.album)) && norm((a.artist || {}).name) === norm(rec.artist));
+      return hit ? tracksFromDeezer(hit.id) : [];
+    });
+    tries.push(async () => {
+      const d = await itunes(`search?term=${encodeURIComponent(rec.artist + " " + rec.album)}&entity=album&limit=10`);
+      const hit = (d.results || []).find((a) => norm(a.collectionName).startsWith(norm(rec.album)) && norm(a.artistName) === norm(rec.artist));
+      return hit ? tracksFromItunes(hit.collectionId) : [];
+    });
+    for (const t of tries) {
+      try { const list = await t(); if (list && list.length) return list.filter((x) => x.t); } catch (e) { if (e && e.message === "busy") throw e; }
+    }
+    return [];
+  }
+  const mmss = (s) => (s == null ? "" : Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"));
+
+  let detailRec = null;
+  function openDetail(r) {
+    detailRec = r;
+    const box = $("dCover"); box.textContent = "";
+    const src = coverSrc(r);
+    if (src) { const i = el("img"); i.alt = "Cover"; i.src = src; box.append(i); }
+    else { const p = el("div", "ph"); p.append(el("span", null, initials(r.artist))); box.append(p); }
+    $("dAlbum").textContent = r.album || "Uten tittel";
+    $("dArtist").textContent = r.artist || "";
+    $("dMeta").textContent = [r.year || "Ukjent år", r.format].filter(Boolean).join(" · ");
+    $("dov").hidden = false;
+    showTracks(r);
+  }
+  function closeDetail() { $("dov").hidden = true; detailRec = null; }
+  function renderTracks(list) {
+    const ol = $("dTracks"); ol.textContent = "";
+    const discs = new Set(list.map((t) => t.d)).size;
+    let last = null, total = 0;
+    for (const t of list) {
+      if (discs > 1 && t.d !== last) { ol.append(el("li", "disc", "Plate " + t.d)); last = t.d; }
+      const li = el("li", "trk");
+      li.append(el("span", "pos", t.p), el("span", "tt", t.t), el("span", "len", mmss(t.s)));
+      ol.append(li); total += t.s || 0;
+    }
+    $("dTotal").textContent = list.length ? `${list.length} spor` + (total ? ` · ${Math.round(total / 60)} min` : "") : "";
+  }
+  async function showTracks(r, force) {
+    const st = $("dStatus"); $("dRetry").hidden = true;
+    if (r.tracks && r.tracks.length && !force) { st.textContent = ""; renderTracks(r.tracks); return; }
+    renderTracks([]); st.className = "status"; st.textContent = "Henter sporliste …";
+    try {
+      const list = await fetchTracks(r);
+      if (detailRec !== r) return;
+      if (!list.length) { st.textContent = "Fant ikke sporlisten for denne plata."; $("dRetry").hidden = false; return; }
+      st.textContent = ""; renderTracks(list);
+      const upd = Object.assign({}, r, { tracks: list, updatedAt: Date.now() });
+      await putRec(upd); cloudSave(upd);
+      const i = state.records.findIndex((x) => x.id === r.id); if (i >= 0) state.records[i] = upd;
+      detailRec = upd;
+    } catch (e) {
+      if (detailRec !== r) return;
+      st.className = "status err"; st.textContent = netErr(e); $("dRetry").hidden = false;
+    }
+  }
+  $("dClose").onclick = closeDetail;
+  $("dEdit").onclick = () => { const r = detailRec; closeDetail(); if (r) openForm(r); };
+  $("dRetry").onclick = () => { if (detailRec) showTracks(detailRec, true); };
+  $("dov").addEventListener("click", (e) => { if (e.target === $("dov")) closeDetail(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("dov").hidden) closeDetail(); });
 
   /* ---------------- Backup ---------------- */
   const blobToData = (b) => new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => res(null); r.readAsDataURL(b); });
@@ -559,7 +675,8 @@
       for (const o of data.records) {
         if (!o || !o.id || !o.artist) continue;
         const rec = { id: String(o.id), artist: String(o.artist), album: String(o.album || ""), year: Number(o.year) || null,
-          format: o.format === "CD" ? "CD" : "LP", addedAt: Number(o.addedAt) || Date.now(), coverUrl: o.coverUrl || null, cover: null };
+          format: o.format === "CD" ? "CD" : "LP", addedAt: Number(o.addedAt) || Date.now(), coverUrl: o.coverUrl || null, cover: null,
+          src: o.src || null, tracks: Array.isArray(o.tracks) ? o.tracks : null };
         if (o.coverData) rec.cover = await dataToBlob(o.coverData);
         rec.updatedAt = Date.now();
         await putRec(rec); cloudSave(rec); n++;
