@@ -177,49 +177,99 @@
   }
   const luceneEsc = (s) => s.replace(/([+\-!(){}\[\]^"~*?:\\\/]|&&|\|\|)/g, "\\$1");
 
+  /* iTunes-søk brukes som reserve når MusicBrainz ikke har plata */
+  async function itunes(path) {
+    const res = await fetch("https://itunes.apple.com/" + path + "&country=no");
+    if (!res.ok) throw new Error("http " + res.status);
+    return res.json();
+  }
+  function fromItunes(r) {
+    const art = r.artworkUrl100 || "";
+    return {
+      artist: r.artistName || "", album: (r.collectionName || "").replace(/ - (Single|EP)$/i, ""),
+      year: yearOf(r.releaseDate), format: null, rgid: null, relid: null,
+      type: r.collectionType === "Compilation" ? "Samling" : "",
+      thumb: art || null, art: art ? art.replace(/\d+x\d+bb/, "600x600bb") : null,
+    };
+  }
+  const keyOf = (o) => (o.artist + "|" + o.album).toLocaleLowerCase("nb").replace(/[^\p{L}\p{N}|]/gu, "");
+  function merge(...lists) {
+    const seen = new Set(), out = [];
+    for (const l of lists) for (const o of l || []) { const k = keyOf(o); if (!seen.has(k)) { seen.add(k); out.push(o); } }
+    return out;
+  }
+
   async function lookupBarcode(code) {
-    const data = await mb(`/release/?query=barcode:${encodeURIComponent(code)}&limit=10`);
-    const rels = (data.releases || []).filter((r) => r.barcode === code || !r.barcode);
-    const use = rels.length ? rels : data.releases || [];
-    // Slå sammen utgaver av samme album (release-group)
-    const seen = new Map();
-    for (const r of use) {
-      const rg = r["release-group"] || {};
-      const key = rg.id || r.id;
-      if (seen.has(key)) continue;
-      seen.set(key, {
-        artist: credit(r["artist-credit"]), album: rg.title || r.title,
-        year: null, releaseYear: yearOf(r.date), format: fmtOf(r.media),
-        rgid: rg.id || null, relid: r.id,
-      });
-    }
-    const out = [...seen.values()];
-    // Hent original utgivelsesår for albumet (første utgivelse)
-    for (const o of out.slice(0, 3)) {
-      if (!o.rgid) { o.year = o.releaseYear; continue; }
-      try { const rg = await mb(`/release-group/${o.rgid}`); o.year = yearOf(rg["first-release-date"]) || o.releaseYear; }
-      catch (e) { o.year = o.releaseYear; }
+    let out = [];
+    try {
+      const data = await mb(`/release/?query=barcode:${encodeURIComponent(code)}&limit=10`);
+      const rels = (data.releases || []).filter((r) => r.barcode === code);
+      const seen = new Map();
+      for (const r of rels) {
+        const rg = r["release-group"] || {};
+        const key = rg.id || r.id;
+        if (seen.has(key)) continue;
+        seen.set(key, {
+          artist: credit(r["artist-credit"]), album: rg.title || r.title,
+          year: null, releaseYear: yearOf(r.date), format: fmtOf(r.media),
+          rgid: rg.id || null, relid: r.id,
+        });
+      }
+      out = [...seen.values()];
+      // Hent original utgivelsesår for albumet (første utgivelse)
+      for (const o of out.slice(0, 3)) {
+        if (!o.rgid) { o.year = o.releaseYear; continue; }
+        try { const rg = await mb(`/release-group/${o.rgid}`); o.year = yearOf(rg["first-release-date"]) || o.releaseYear; }
+        catch (e) { o.year = o.releaseYear; }
+      }
+    } catch (e) { if (e.message === "busy") throw e; }
+    if (!out.length) {
+      try {
+        const d = await itunes(`lookup?upc=${encodeURIComponent(code)}&entity=album`);
+        out = (d.results || []).filter((r) => r.wrapperType === "collection").map(fromItunes);
+      } catch (e) {}
     }
     return out;
   }
   async function searchAlbum(artist, album) {
+    const mapRg = (min) => (data) => (data["release-groups"] || [])
+      .filter((g) => (g.score || 0) >= min)
+      .map((g) => ({
+        artist: credit(g["artist-credit"]), album: g.title, year: yearOf(g["first-release-date"]),
+        format: null, rgid: g.id, relid: null,
+        type: ((g["secondary-types"] || []).includes("Compilation") ? "Samling" : g["primary-type"] || ""),
+      }));
+    let strict = [], loose = [], apple = [];
+    // 1) Nøyaktig søk
     const parts = [];
     if (album) parts.push(`releasegroup:"${luceneEsc(album)}"`);
     if (artist) parts.push(`artist:"${luceneEsc(artist)}"`);
-    const q = parts.join(" AND ");
-    const data = await mb(`/release-group/?query=${encodeURIComponent(q)}&limit=12`);
-    return (data["release-groups"] || [])
-      .filter((g) => (g.score || 0) >= 60)
-      .map((g) => ({
-        artist: credit(g["artist-credit"]), album: g.title, year: yearOf(g["first-release-date"]),
-        format: null, rgid: g.id, relid: null, type: g["primary-type"] || "",
-      }));
+    try { strict = mapRg(60)(await mb(`/release-group/?query=${encodeURIComponent(parts.join(" AND "))}&limit=12`)); }
+    catch (e) { if (e.message === "busy") throw e; }
+    // 2) Løsere søk: ordene hver for seg, tåler skrivefeil
+    if (strict.length < 3) {
+      const words = (s) => s.split(/\s+/).filter(Boolean).map((w) => luceneEsc(w) + (w.length > 4 ? "~" : "")).join(" ");
+      const lp = [];
+      if (album) lp.push(`releasegroup:(${words(album)})`);
+      if (artist) lp.push(`artist:(${words(artist)})`);
+      try { loose = mapRg(50)(await mb(`/release-group/?query=${encodeURIComponent(lp.join(" AND "))}&limit=12`)); } catch (e) {}
+    }
+    // 3) Reserve: iTunes
+    if (strict.length + loose.length < 3) {
+      try {
+        const d = await itunes(`search?term=${encodeURIComponent([artist, album].filter(Boolean).join(" "))}&entity=album&limit=10`);
+        apple = (d.results || []).map(fromItunes);
+      } catch (e) {}
+    }
+    return merge(strict, loose, apple).slice(0, 15);
   }
   function caaThumb(o) {
+    if (o.thumb) return o.thumb;
     return o.relid ? `${CAA}/release/${o.relid}/front-250` : o.rgid ? `${CAA}/release-group/${o.rgid}/front-250` : "";
   }
   async function fetchCover(o) {
     const urls = [];
+    if (o.art) urls.push(o.art);
     if (o.relid) urls.push(`${CAA}/release/${o.relid}/front-500`);
     if (o.rgid) urls.push(`${CAA}/release-group/${o.rgid}/front-500`);
     for (const u of urls) {
@@ -274,8 +324,8 @@
     try {
       const list = await lookupBarcode(code);
       if (!list.length) {
-        setFind("Fant ikke denne strekkoden. Prøv «Søk etter album» i stedet.", true);
-        $("searchBox").hidden = false; return;
+        setFind("Fant ikke strekkoden i databasen. Skriv artist og album og trykk Søk.", true);
+        $("manualCode").hidden = true; $("searchBox").hidden = false; $("sArtist").focus(); return;
       }
       if (list.length === 1) await choose(list[0]);
       else { setFind("Flere treff. Velg riktig album:"); showResults(list); }
@@ -287,7 +337,7 @@
     setFind("Søker …"); $("results").textContent = "";
     try {
       const list = await searchAlbum(a, al);
-      if (!list.length) setFind("Ingen treff. Sjekk stavingen eller fyll inn selv.", true);
+      if (!list.length) setFind("Ingen treff. Prøv bare artistnavnet, eller fyll inn feltene under selv.", true);
       else { setFind(`${list.length} treff. Velg riktig album:`); showResults(list); }
     } catch (e) { setFind(netErr(e), true); }
   }
