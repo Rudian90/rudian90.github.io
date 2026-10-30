@@ -1,6 +1,6 @@
 /* Platehylla service worker: appen virker uten nett. Albuminfo hentes alltid fra nettet. */
-const VERSION = "platehylla-v6";
-const SHELL = ["./", "index.html", "styles.css", "app.js", "manifest.webmanifest", "privacy.html",
+const VERSION = "platehylla-v7";
+const SHELL = ["./", "index.html", "styles.css", "app.js", "cloud.js", "manifest.webmanifest", "privacy.html",
   "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png"];
 
 self.addEventListener("install", (e) => {
@@ -14,7 +14,8 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET") return;
   if (url.hostname.endsWith("musicbrainz.org") || url.hostname.endsWith("coverartarchive.org") || url.hostname.endsWith("archive.org")) return;
-  if (url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com") {
+  const isSdk = url.hostname === "www.gstatic.com" && url.pathname.startsWith("/firebasejs/");
+  if (isSdk || url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com") {
     e.respondWith(caches.open(VERSION).then(async (c) => {
       const hit = await c.match(e.request);
       if (hit) return hit;

@@ -464,7 +464,7 @@
     showPhoto(r ? coverSrc(r) : ""); $("photo").value = "";
     $("ov").hidden = false;
   }
-  function closeForm() { stopScan(); $("ov").hidden = true; state.editing = null; }
+  function closeForm() { stopScan(); $("ov").hidden = true; state.editing = null; render(); }
 
   $("form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -475,11 +475,12 @@
     if (yRaw && (!Number.isInteger(year) || year < 1900 || year > 2100)) { st.className = "status err"; st.textContent = "Året må være fire siffer, f.eks. 1979."; return; }
     const isEdit = !!state.editing;
     const base = state.editing || { id: "r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), addedAt: Date.now(), cover: null, coverUrl: null };
-    const rec = Object.assign({}, base, { artist, album, year, format: $("fFmt").value });
+    const rec = Object.assign({}, base, { artist, album, year, format: $("fFmt").value, updatedAt: Date.now() });
     if (state.coverChanged) { rec.cover = state.coverBlob || null; rec.coverUrl = state.coverUrl || null; }
     $("saveBtn").disabled = true;
     try {
       await putRec(rec);
+      cloudSave(rec);
       const i = state.records.findIndex((x) => x.id === rec.id);
       if (i >= 0) state.records[i] = rec; else state.records.push(rec);
       render(); closeForm(); toast(isEdit ? "Endringer lagret" : "Lagt i hylla");
@@ -494,6 +495,7 @@
     const id = state.editing.id;
     try {
       await delRec(id);
+      cloudDel(id);
       state.records = state.records.filter((x) => x.id !== id);
       const u = urlCache.get(id); if (u) { URL.revokeObjectURL(u.url); urlCache.delete(id); }
       render(); closeForm(); toast("Plata er slettet");
@@ -535,7 +537,8 @@
         const rec = { id: String(o.id), artist: String(o.artist), album: String(o.album || ""), year: Number(o.year) || null,
           format: o.format === "CD" ? "CD" : "LP", addedAt: Number(o.addedAt) || Date.now(), coverUrl: o.coverUrl || null, cover: null };
         if (o.coverData) rec.cover = await dataToBlob(o.coverData);
-        await putRec(rec); n++;
+        rec.updatedAt = Date.now();
+        await putRec(rec); cloudSave(rec); n++;
       }
       await load(); toast(`${n} plater hentet inn`);
     } catch (err) { toast("Filen er ikke en Platehylla-backup."); }
@@ -566,6 +569,34 @@
   document.addEventListener("visibilitychange", () => { if (document.hidden) stopScan(); });
   let tt; function toast(t) { const e = $("toast"); e.textContent = t; e.hidden = false; clearTimeout(tt); tt = setTimeout(() => (e.hidden = true), 2600); }
 
+  /* ---------------- Skylagring (cloud.js) ---------------- */
+  function cloudSave(rec) { try { if (window.PH.cloud) window.PH.cloud.save(rec); } catch (e) {} }
+  function cloudDel(id) { try { if (window.PH.cloud) window.PH.cloud.remove(id); } catch (e) {} }
+  window.PH = {
+    cloud: null,
+    records: () => state.records.slice(),
+    async applyRemote(rec) {
+      await putRec(rec);
+      const i = state.records.findIndex((x) => x.id === rec.id);
+      if (i >= 0) state.records[i] = rec; else state.records.push(rec);
+      scheduleRender();
+    },
+    async removeRemote(id) {
+      await delRec(id);
+      state.records = state.records.filter((x) => x.id !== id);
+      const u = urlCache.get(id); if (u) { URL.revokeObjectURL(u.url); urlCache.delete(id); }
+      scheduleRender();
+    },
+    async clearLocal() {
+      for (const r of state.records) await delRec(r.id);
+      state.records = []; render();
+    },
+    toast: (t) => toast(t),
+    closeMenu: () => toggleMenu(false),
+  };
+  let rq = 0;
+  function scheduleRender() { cancelAnimationFrame(rq); rq = requestAnimationFrame(() => { if ($("ov").hidden) render(); else rq = 0; }); }
+
   if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
-  render(); load();
+  render(); window.PH.ready = load();
 })();

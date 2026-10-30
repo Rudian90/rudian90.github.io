@@ -114,3 +114,12 @@ label.f input,label.f select{text-transform:none;letter-spacing:0;font-weight:40
 .sheet-foot .right{display:flex;gap:10px;margin-left:auto}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-weight:600;z-index:30;max-width:calc(100% - 32px)}
 @media (prefers-reduced-motion:no-preference){.card .cover{transition:transform .15s ease}.card:hover .cover{transform:translateY(-3px)}}
+
+/* Skylagring */
+.cloud-box{display:flex;flex-direction:column;gap:6px;padding:8px 12px 12px;border-bottom:1px solid var(--line);margin-bottom:4px}
+.cloud-box .menu-note{margin:0}
+.cloud-title{margin:0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.cloud-actions{display:flex;flex-wrap:wrap;gap:8px}
+.cloud-banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px;background:var(--surface);border:1.5px solid var(--sticker);border-radius:12px;padding:12px 14px}
+.cloud-banner p{margin:0;flex:1 1 220px;min-width:0;font-weight:600}
+.cloud-banner-actions{display:flex;gap:8px;flex-wrap:wrap}

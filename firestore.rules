@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Hver bruker kan bare lese og skrive sine egne plater.
+    match /users/{uid}/records/{recordId} {
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.artist is string && request.resource.data.artist.size() <= 300
+        && request.resource.data.album is string && request.resource.data.album.size() <= 300
+        && request.resource.data.format in ['LP', 'CD']
+        && (request.resource.data.coverData == null
+            || (request.resource.data.coverData is string && request.resource.data.coverData.size() < 400000));
+    }
+    // Alt annet er stengt.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

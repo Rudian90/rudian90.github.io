@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="styles.css?v=1.4">
+<link rel="stylesheet" href="styles.css?v=2.0">
 </head>
 <body>
 <div class="wrap">
@@ -27,11 +27,20 @@
   </header>
 
   <div class="menu" id="menu" hidden>
+    <div class="cloud-box" id="cloudBox"></div>
     <button type="button" id="exportBtn">Ta backup (eksporter)</button>
     <label class="menu-file">Hent inn backup (importer)<input type="file" id="importFile" accept="application/json,.json"></label>
     <a href="privacy.html">Personvern</a>
     <p class="menu-note">Samlingen lagres bare på denne enheten. Albuminfo og cover hentes fra <a href="https://musicbrainz.org" target="_blank" rel="noopener">MusicBrainz</a> og Cover Art Archive.</p>
-    <p class="menu-note">Versjon 1.4</p>
+    <p class="menu-note">Versjon 2.0</p>
+  </div>
+
+  <div class="cloud-banner" id="cloudBanner" hidden>
+    <p>Samlingen ligger bare på denne telefonen. Logg inn for å sikre den i skyen.</p>
+    <div class="cloud-banner-actions">
+      <button class="btn primary small" type="button" id="cloudBannerLogin">Logg inn med Google</button>
+      <button class="btn ghost small" type="button" id="cloudBannerClose">Ikke nå</button>
+    </div>
   </div>
 
   <div class="toolbar">
@@ -104,6 +113,7 @@
   </form>
 </div>
 <div class="toast" id="toast" hidden></div>
-<script src="app.js?v=1.4"></script>
+<script src="app.js?v=2.0"></script>
+<script type="module" src="cloud.js?v=2.0"></script>
 </body>
 </html>
