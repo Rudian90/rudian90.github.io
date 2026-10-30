@@ -248,6 +248,12 @@
         out = (d.results || []).filter((r) => r.wrapperType === "collection").map(fromItunes);
       } catch (e) {}
     }
+    if (!out.length) {
+      try {
+        const d = await deezer(`album/upc:${encodeURIComponent(code)}`);
+        if (d && d.id && !d.error) { const o = fromDeezer(d); o.year = yearOf(d.release_date); out = [o]; }
+      } catch (e) {}
+    }
     return out;
   }
   async function searchAlbum(artist, album) {
