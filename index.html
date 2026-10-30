@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="nb">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Platehylla</title>
+<meta name="description" content="Hold oversikt over CD- og LP-samlingen din. Skann strekkoden, hent albuminfo og se platene sortert etter artist og år.">
+<meta name="theme-color" content="#15171A">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Platehylla</h1>
+      <div class="stats" id="stats"></div>
+    </div>
+    <div class="top-actions">
+      <button class="btn ghost" id="menuBtn" type="button" aria-haspopup="true" aria-expanded="false">Mer</button>
+      <button class="btn primary" id="addBtn" type="button">+ Legg til plate</button>
+    </div>
+  </header>
+
+  <div class="menu" id="menu" hidden>
+    <button type="button" id="exportBtn">Ta backup (eksporter)</button>
+    <label class="menu-file">Hent inn backup (importer)<input type="file" id="importFile" accept="application/json,.json"></label>
+    <a href="privacy.html">Personvern</a>
+    <p class="menu-note">Samlingen lagres bare på denne enheten. Albuminfo og cover hentes fra <a href="https://musicbrainz.org" target="_blank" rel="noopener">MusicBrainz</a> og Cover Art Archive.</p>
+  </div>
+
+  <div class="toolbar">
+    <input class="search" id="q" type="search" placeholder="Søk i samlingen" aria-label="Søk i samlingen">
+    <div class="seg" role="group" aria-label="Sortering" id="sortSeg">
+      <button type="button" data-sort="artist">Artist → år</button>
+      <button type="button" data-sort="year">Etter år</button>
+      <button type="button" data-sort="new">Nyeste</button>
+    </div>
+    <div class="seg" role="group" aria-label="Format" id="fmtSeg">
+      <button type="button" data-fmt="all">Alle</button>
+      <button type="button" data-fmt="LP">LP</button>
+      <button type="button" data-fmt="CD">CD</button>
+    </div>
+  </div>
+
+  <main id="list" class="bins"></main>
+</div>
+
+<!-- Add / edit sheet -->
+<div class="overlay" id="ov" hidden>
+  <form class="sheet" id="form" novalidate>
+    <div class="sheet-head"><h2 id="formTitle">Ny plate</h2><button class="x" type="button" id="closeBtn" aria-label="Lukk">×</button></div>
+
+    <section class="finder" id="finder">
+      <div class="finder-btns">
+        <button class="btn primary" type="button" id="scanBtn">Skann strekkode</button>
+        <button class="btn ghost" type="button" id="searchToggle">Søk etter album</button>
+      </div>
+      <div class="scanner" id="scanner" hidden>
+        <video id="video" playsinline muted></video>
+        <div class="scan-line" aria-hidden="true"></div>
+        <button class="btn ghost small" type="button" id="stopScan">Stopp kamera</button>
+      </div>
+      <div class="manual-code" id="manualCode" hidden>
+        <label class="f">Strekkode (tallene under strekene)<input id="codeInput" inputmode="numeric" autocomplete="off" placeholder="f.eks. 5099902987026"></label>
+        <button class="btn ghost" type="button" id="codeBtn">Slå opp</button>
+      </div>
+      <div class="searchbox" id="searchBox" hidden>
+        <label class="f">Artist<input id="sArtist" autocomplete="off"></label>
+        <label class="f">Album<input id="sAlbum" autocomplete="off"></label>
+        <button class="btn ghost" type="button" id="searchBtn">Søk</button>
+      </div>
+      <div class="status" id="findStatus" role="status"></div>
+      <ul class="results" id="results"></ul>
+    </section>
+
+    <div class="photo-row">
+      <div class="photo" id="photoBox"></div>
+      <div class="photo-actions">
+        <span class="btn ghost filebtn">Ta eget bilde av cover<input type="file" id="photo" accept="image/*" capture="environment" aria-label="Ta eget bilde av coveret"></span>
+        <p class="hint">Coveret hentes automatisk når du skanner eller søker. Ta eget bilde hvis det mangler.</p>
+      </div>
+    </div>
+
+    <div class="fields">
+      <label class="f full">Artist<input id="fArtist" autocomplete="off" required></label>
+      <label class="f full">Album<input id="fAlbum" autocomplete="off" required></label>
+      <label class="f">Utgivelsesår<input id="fYear" inputmode="numeric" maxlength="4" placeholder="f.eks. 1979"></label>
+      <label class="f">Format<select id="fFmt"><option value="LP">LP (vinyl)</option><option value="CD">CD</option></select></label>
+    </div>
+    <div class="status" id="saveStatus" role="status"></div>
+    <div class="sheet-foot">
+      <button class="btn danger" type="button" id="delBtn" hidden>Slett</button>
+      <div class="right">
+        <button class="btn ghost" type="button" id="cancelBtn">Avbryt</button>
+        <button class="btn primary" type="submit" id="saveBtn">Lagre</button>
+      </div>
+    </div>
+  </form>
+</div>
+<div class="toast" id="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
