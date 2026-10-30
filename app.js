@@ -178,20 +178,30 @@
   const luceneEsc = (s) => s.replace(/([+\-!(){}\[\]^"~*?:\\\/]|&&|\|\|)/g, "\\$1");
 
   /* iTunes-søk brukes som reserve når MusicBrainz ikke har plata */
-  // iTunes svarer ikke på vanlige fetch-kall fra nettlesere (CORS), så vi bruker JSONP.
+  // iTunes og Deezer svarer ikke på vanlige fetch-kall fra nettlesere (CORS), så vi bruker JSONP.
   let jsonpN = 0;
-  function itunes(path) {
+  function jsonp(url) {
     return new Promise((resolve, reject) => {
-      const cb = "__ph_itunes" + (++jsonpN);
+      const cb = "__ph_cb" + (++jsonpN);
       const sc = document.createElement("script");
       const done = (fn, v) => { clearTimeout(t); try { delete window[cb]; } catch (e) { window[cb] = undefined; } sc.remove(); fn(v); };
-      const t = setTimeout(() => done(reject, new Error("timeout")), 10000);
+      const t = setTimeout(() => done(reject, new Error("tidsavbrudd")), 10000);
       window[cb] = (data) => done(resolve, data);
-      sc.onerror = () => done(reject, new Error("network"));
-      sc.src = "https://itunes.apple.com/" + path + "&country=no&callback=" + cb;
+      sc.onerror = () => done(reject, new Error("blokkert"));
+      sc.src = url + (url.includes("?") ? "&" : "?") + "callback=" + cb;
       document.head.appendChild(sc);
     });
   }
+  const itunes = (path) => jsonp("https://itunes.apple.com/" + path + "&country=no");
+  const deezer = (path) => jsonp("https://api.deezer.com/" + path + (path.includes("?") ? "&" : "?") + "output=jsonp");
+  function fromDeezer(a) {
+    return {
+      artist: (a.artist && a.artist.name) || "", album: a.title || "", year: null, format: null,
+      rgid: null, relid: null, dzid: a.id, type: a.record_type === "compile" ? "Samling" : "",
+      thumb: a.cover_medium || null, art: a.cover_xl || a.cover_big || null,
+    };
+  }
+  let searchLog = [];
   function fromItunes(r) {
     const art = r.artworkUrl100 || "";
     return {
@@ -248,13 +258,14 @@
         format: null, rgid: g.id, relid: null,
         type: ((g["secondary-types"] || []).includes("Compilation") ? "Samling" : g["primary-type"] || ""),
       }));
-    let strict = [], loose = [], apple = [];
+    let strict = [], loose = [], apple = [], dz = [];
+    searchLog = [];
     // 1) Nøyaktig søk
     const parts = [];
     if (album) parts.push(`releasegroup:"${luceneEsc(album)}"`);
     if (artist) parts.push(`artist:"${luceneEsc(artist)}"`);
     try { strict = mapRg(60)(await mb(`/release-group/?query=${encodeURIComponent(parts.join(" AND "))}&limit=12`)); }
-    catch (e) { if (e.message === "busy") throw e; }
+    catch (e) { if (e.message === "busy") throw e; searchLog.push("MusicBrainz: feil"); }
     // 2) Løsere søk: ordene hver for seg, tåler skrivefeil
     if (strict.length < 3) {
       const words = (s) => s.split(/\s+/).filter(Boolean).map((w) => luceneEsc(w) + (w.length > 4 ? "~" : "")).join(" ");
@@ -263,14 +274,23 @@
       if (artist) lp.push(`artist:(${words(artist)})`);
       try { loose = mapRg(50)(await mb(`/release-group/?query=${encodeURIComponent(lp.join(" AND "))}&limit=12`)); } catch (e) {}
     }
+    searchLog.push(`MusicBrainz: ${strict.length + loose.length}`);
     // 3) Reserve: iTunes
     if (strict.length + loose.length < 3) {
       try {
         const d = await itunes(`search?term=${encodeURIComponent([artist, album].filter(Boolean).join(" "))}&entity=album&limit=10`);
         apple = (d.results || []).map(fromItunes);
-      } catch (e) {}
+        searchLog.push(`iTunes: ${apple.length}`);
+      } catch (e) { searchLog.push(`iTunes: ${e.message}`); }
+      try {
+        const q = [artist ? `artist:"${artist}"` : "", album ? `album:"${album}"` : ""].filter(Boolean).join(" ");
+        let d = await deezer(`search/album?q=${encodeURIComponent(q)}&limit=10`);
+        if (!(d.data || []).length) d = await deezer(`search/album?q=${encodeURIComponent([artist, album].filter(Boolean).join(" "))}&limit=10`);
+        dz = (d.data || []).map(fromDeezer);
+        searchLog.push(`Deezer: ${dz.length}`);
+      } catch (e) { searchLog.push(`Deezer: ${e.message}`); }
     }
-    return merge(strict, loose, apple).slice(0, 15);
+    return merge(strict, loose, apple, dz).slice(0, 15);
   }
   function caaThumb(o) {
     if (o.thumb) return o.thumb;
@@ -318,6 +338,9 @@
     if (o.year) $("fYear").value = o.year;
     if (o.format) $("fFmt").value = o.format;
     $("results").textContent = "";
+    if (!o.year && o.dzid) {
+      try { const d = await deezer(`album/${o.dzid}`); const y = yearOf(d.release_date); if (y) $("fYear").value = y; } catch (e) {}
+    }
     if (!o.year && o.rgid) {
       try { const rg = await mb(`/release-group/${o.rgid}`); const y = yearOf(rg["first-release-date"]); if (y) $("fYear").value = y; } catch (e) {}
     }
@@ -346,7 +369,7 @@
     setFind("Søker …"); $("results").textContent = "";
     try {
       const list = await searchAlbum(a, al);
-      if (!list.length) setFind("Ingen treff. Prøv bare artistnavnet, eller fyll inn feltene under selv.", true);
+      if (!list.length) setFind(`Ingen treff. Prøv bare artistnavnet, eller fyll inn feltene under selv. (${searchLog.join(", ")})`, true);
       else { setFind(`${list.length} treff. Velg riktig album:`); showResults(list); }
     } catch (e) { setFind(netErr(e), true); }
   }
