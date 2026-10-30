@@ -1,5 +1,5 @@
 /* Platehylla service worker: appen virker uten nett. Albuminfo hentes alltid fra nettet. */
-const VERSION = "platehylla-v7";
+const VERSION = "platehylla-v8";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "cloud.js", "manifest.webmanifest", "privacy.html",
   "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png"];
 

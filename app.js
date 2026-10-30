@@ -352,8 +352,10 @@
     }
     setFind("Henter cover …");
     const c = await fetchCover(o).catch(() => null);
-    if (c) { state.coverBlob = c.blob; state.coverUrl = c.url; state.coverChanged = true; showPhoto(c.blob ? URL.createObjectURL(c.blob) : c.url); setFind("Fylt ut. Sjekk og trykk Lagre."); }
-    else setFind("Fylt ut. Fant ikke cover, så ta gjerne et eget bilde.");
+    const dupes = findDupes($("fArtist").value, $("fAlbum").value, state.editing && state.editing.id);
+    const dupNote = dupes.length ? " Obs: " + dupText(dupes) : "";
+    if (c) { state.coverBlob = c.blob; state.coverUrl = c.url; state.coverChanged = true; showPhoto(c.blob ? URL.createObjectURL(c.blob) : c.url); setFind("Fylt ut. Sjekk og trykk Lagre." + dupNote, !!dupes.length); }
+    else setFind("Fylt ut. Fant ikke cover, så ta gjerne et eget bilde." + dupNote, !!dupes.length);
   }
   async function doBarcode(code) {
     code = String(code || "").replace(/\D/g, "");
@@ -450,7 +452,20 @@
   });
 
   /* ---------------- Form ---------------- */
-  let delArmed = false;
+  let delArmed = false, dupArmed = false;
+  const norm = (x) => sortKey(x).replace(/[^\p{L}\p{N}]/gu, "");
+  function findDupes(artist, album, exceptId) {
+    const a = norm(artist), b = norm(album);
+    if (!a || !b) return [];
+    return state.records.filter((r) => r.id !== exceptId && norm(r.artist) === a && norm(r.album) === b);
+  }
+  function dupText(d) {
+    const fm = [...new Set(d.map((r) => r.format))];
+    const n = d.length;
+    return `Du har allerede ${n === 1 ? "denne" : n + " eksemplarer av denne"} i samlingen (${fm.join(" og ")}).`;
+  }
+  function resetDup() { if (dupArmed) { dupArmed = false; $("saveBtn").textContent = "Lagre"; const st = $("saveStatus"); st.textContent = ""; st.className = "status"; } }
+  ["fArtist", "fAlbum"].forEach((id) => $(id).addEventListener("input", resetDup));
   function openForm(r) {
     state.editing = r; state.coverBlob = null; state.coverUrl = null; state.coverChanged = false;
     $("formTitle").textContent = r ? "Rediger plate" : "Ny plate";
@@ -460,6 +475,7 @@
     $("sArtist").value = ""; $("sAlbum").value = ""; $("codeInput").value = "";
     $("searchBox").hidden = true; $("manualCode").hidden = true; $("results").textContent = "";
     $("delBtn").hidden = !r; delArmed = false; $("delBtn").textContent = "Slett";
+    dupArmed = false; $("saveBtn").textContent = "Lagre";
     setFind(""); const ss = $("saveStatus"); ss.textContent = ""; ss.className = "status";
     showPhoto(r ? coverSrc(r) : ""); $("photo").value = "";
     $("ov").hidden = false;
@@ -474,6 +490,14 @@
     if (!artist || !album) { st.className = "status err"; st.textContent = "Fyll inn både artist og album."; return; }
     if (yRaw && (!Number.isInteger(year) || year < 1900 || year > 2100)) { st.className = "status err"; st.textContent = "Året må være fire siffer, f.eks. 1979."; return; }
     const isEdit = !!state.editing;
+    const dupes = findDupes(artist, album, state.editing && state.editing.id);
+    if (dupes.length && !dupArmed) {
+      dupArmed = true;
+      st.className = "status err";
+      st.textContent = dupText(dupes) + " Trykk «Lagre likevel» hvis du vil legge den inn en gang til.";
+      $("saveBtn").textContent = "Lagre likevel";
+      return;
+    }
     const base = state.editing || { id: "r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), addedAt: Date.now(), cover: null, coverUrl: null };
     const rec = Object.assign({}, base, { artist, album, year, format: $("fFmt").value, updatedAt: Date.now() });
     if (state.coverChanged) { rec.cover = state.coverBlob || null; rec.coverUrl = state.coverUrl || null; }
