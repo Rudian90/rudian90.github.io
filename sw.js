@@ -1,5 +1,5 @@
 /* Platehylla service worker: appen virker uten nett. Albuminfo hentes alltid fra nettet. */
-const VERSION = "platehylla-v2";
+const VERSION = "platehylla-v3";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "manifest.webmanifest", "privacy.html",
   "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png"];
 
@@ -26,7 +26,7 @@ self.addEventListener("fetch", (e) => {
   }
   if (url.origin !== self.location.origin) return;
   // Nettverk først for appens egne filer, så oppdateringer kommer fram; cache når man er uten nett.
-  e.respondWith(fetch(e.request).then((res) => {
+  e.respondWith(fetch(e.request, { cache: "no-cache" }).then((res) => {
     if (res.ok) { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(e.request, copy)); }
     return res;
   }).catch(() => caches.match(e.request).then((r) => r || caches.match("index.html"))));
