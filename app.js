@@ -178,10 +178,19 @@
   const luceneEsc = (s) => s.replace(/([+\-!(){}\[\]^"~*?:\\\/]|&&|\|\|)/g, "\\$1");
 
   /* iTunes-søk brukes som reserve når MusicBrainz ikke har plata */
-  async function itunes(path) {
-    const res = await fetch("https://itunes.apple.com/" + path + "&country=no");
-    if (!res.ok) throw new Error("http " + res.status);
-    return res.json();
+  // iTunes svarer ikke på vanlige fetch-kall fra nettlesere (CORS), så vi bruker JSONP.
+  let jsonpN = 0;
+  function itunes(path) {
+    return new Promise((resolve, reject) => {
+      const cb = "__ph_itunes" + (++jsonpN);
+      const sc = document.createElement("script");
+      const done = (fn, v) => { clearTimeout(t); try { delete window[cb]; } catch (e) { window[cb] = undefined; } sc.remove(); fn(v); };
+      const t = setTimeout(() => done(reject, new Error("timeout")), 10000);
+      window[cb] = (data) => done(resolve, data);
+      sc.onerror = () => done(reject, new Error("network"));
+      sc.src = "https://itunes.apple.com/" + path + "&country=no&callback=" + cb;
+      document.head.appendChild(sc);
+    });
   }
   function fromItunes(r) {
     const art = r.artworkUrl100 || "";
