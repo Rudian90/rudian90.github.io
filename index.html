@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="styles.css?v=2.3">
+<link rel="stylesheet" href="styles.css?v=2.4">
 </head>
 <body>
 <div class="wrap">
@@ -32,7 +32,7 @@
     <label class="menu-file">Hent inn backup (importer)<input type="file" id="importFile" accept="application/json,.json"></label>
     <a href="privacy.html">Personvern</a>
     <p class="menu-note">Samlingen lagres bare på denne enheten. Albuminfo og cover hentes fra <a href="https://musicbrainz.org" target="_blank" rel="noopener">MusicBrainz</a> og Cover Art Archive.</p>
-    <p class="menu-note">Versjon 2.3</p>
+    <p class="menu-note">Versjon 2.4</p>
   </div>
 
   <div class="cloud-banner" id="cloudBanner" hidden>
@@ -101,13 +101,20 @@
       <label class="f full">Artist<input id="fArtist" autocomplete="off" required></label>
       <label class="f full">Album<input id="fAlbum" autocomplete="off" required></label>
       <label class="f">Utgivelsesår<input id="fYear" inputmode="numeric" maxlength="4" placeholder="f.eks. 1979"></label>
-      <label class="f">Format<select id="fFmt"><option value="LP">LP (vinyl)</option><option value="CD">CD</option></select></label>
+      <fieldset class="f fmt-pick">
+        <legend>Har den som</legend>
+        <div class="fmt-opts">
+          <label class="chk"><input type="checkbox" id="fLP" checked><span>LP</span></label>
+          <label class="chk"><input type="checkbox" id="fCD"><span>CD</span></label>
+        </div>
+      </fieldset>
     </div>
     <div class="status" id="saveStatus" role="status"></div>
     <div class="sheet-foot">
       <button class="btn danger" type="button" id="delBtn" hidden>Slett</button>
       <div class="right">
         <button class="btn ghost" type="button" id="cancelBtn">Avbryt</button>
+        <button class="btn primary" type="button" id="mergeBtn" hidden>Legg til den du har</button>
         <button class="btn primary" type="submit" id="saveBtn">Lagre</button>
       </div>
     </div>
@@ -124,6 +131,7 @@
         <p class="d-artist" id="dArtist"></p>
         <p class="d-meta" id="dMeta"></p>
         <button class="btn ghost small" type="button" id="dEdit">Rediger</button>
+        <button class="btn ghost small" type="button" id="dMerge" hidden>Slå sammen</button>
       </div>
     </div>
     <div class="d-tracks-head"><h3>Spor</h3><span id="dTotal"></span></div>
@@ -155,7 +163,7 @@
   </section>
 </div>
 <div class="toast" id="toast" hidden></div>
-<script src="app.js?v=2.3"></script>
-<script type="module" src="cloud.js?v=2.3"></script>
+<script src="app.js?v=2.4"></script>
+<script type="module" src="cloud.js?v=2.4"></script>
 </body>
 </html>

@@ -75,6 +75,7 @@ async function save(rec) {
   const data = {
     artist: String(rec.artist || ""), album: String(rec.album || ""),
     year: Number(rec.year) || null, format: rec.format === "CD" ? "CD" : "LP",
+    formats: Array.isArray(rec.formats) ? rec.formats.filter((f) => f === "LP" || f === "CD") : null,
     addedAt: Number(rec.addedAt) || Date.now(), updatedAt: Number(rec.updatedAt) || Date.now(),
     coverUrl: rec.coverUrl || null, coverData: null,
     src: rec.src || null, tracks: Array.isArray(rec.tracks) ? rec.tracks.slice(0, 200) : null,
@@ -93,7 +94,7 @@ async function toLocal(d) {
   const x = d.data();
   return {
     id: d.id, artist: x.artist || "", album: x.album || "", year: x.year || null,
-    format: x.format === "CD" ? "CD" : "LP", addedAt: x.addedAt || Date.now(), updatedAt: x.updatedAt || 0,
+    format: x.format === "CD" ? "CD" : "LP", formats: Array.isArray(x.formats) ? x.formats : null, addedAt: x.addedAt || Date.now(), updatedAt: x.updatedAt || 0,
     coverUrl: x.coverUrl || null, cover: x.coverData ? await dataToBlob(x.coverData) : null,
     src: x.src || null, tracks: Array.isArray(x.tracks) ? x.tracks : null,
   };

@@ -156,3 +156,19 @@ label.f input,label.f select{text-transform:none;letter-spacing:0;font-weight:40
 .crop-tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .crop-zoom{display:flex;align-items:center;gap:10px;flex:1 1 200px;min-width:0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 .crop-zoom input{flex:1;min-width:0;accent-color:var(--accent)}
+
+/* Format: LP og/eller CD */
+fieldset.f{border:0;margin:0;padding:0;min-width:0}
+fieldset.f legend{padding:0;margin-bottom:5px}
+.fmt-opts{display:flex;gap:8px}
+.chk{position:relative;display:inline-flex;cursor:pointer}
+.chk input{position:absolute;opacity:0;width:1px;height:1px}
+.chk span{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 16px;border:1.5px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink);font-size:15px;font-weight:700;text-transform:none;letter-spacing:0}
+.chk span::before{content:"";width:16px;height:16px;border-radius:4px;border:1.5px solid var(--muted);box-sizing:border-box}
+.chk input:checked + span{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chk input:checked + span::before{background:var(--sticker);border-color:var(--sticker);box-shadow:inset 0 0 0 3px var(--ink)}
+.chk input:focus-visible + span{outline:2px solid var(--accent);outline-offset:2px}
+.sheet-foot .right{flex-wrap:wrap;justify-content:flex-end}
+.d-info .btn + .btn{margin-top:4px}
+fieldset.f legend{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+#saveBtn.secondary{background:transparent;color:var(--ink);border:1.5px solid var(--line)}

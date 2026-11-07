@@ -66,13 +66,19 @@
   }
 
   /* ---------------- Sorting ---------------- */
+  const FMTS = ["LP", "CD"];
+  function fmtsOf(r) {
+    const f = Array.isArray(r.formats) ? r.formats.filter((x) => FMTS.includes(x)) : [];
+    return f.length ? FMTS.filter((x) => f.includes(x)) : [r.format === "CD" ? "CD" : "LP"];
+  }
+  const fmtLabel = (r) => fmtsOf(r).join(" + ");
   const sortKey = (s) => (s || "").trim().replace(/^(the|de|die|les|la)\s+/i, "").toLocaleLowerCase("nb");
   const coll = new Intl.Collator("nb", { sensitivity: "base", numeric: true });
   const yr = (r) => Number(r.year) || 9999;
   function visible() {
     const q = state.q.trim().toLocaleLowerCase("nb");
     return state.records.filter((r) =>
-      (state.fmt === "all" || r.format === state.fmt) &&
+      (state.fmt === "all" || fmtsOf(r).includes(state.fmt)) &&
       (!q || (r.artist || "").toLocaleLowerCase("nb").includes(q) || (r.album || "").toLocaleLowerCase("nb").includes(q)));
   }
   function groups(list) {
@@ -104,8 +110,8 @@
   /* ---------------- Render ---------------- */
   function render() {
     const all = state.records;
-    const lp = all.filter((r) => r.format === "LP").length;
-    const cd = all.filter((r) => r.format === "CD").length;
+    const lp = all.filter((r) => fmtsOf(r).includes("LP")).length;
+    const cd = all.filter((r) => fmtsOf(r).includes("CD")).length;
     const artists = new Set(all.map((r) => sortKey(r.artist))).size;
     const st = $("stats"); st.textContent = "";
     [[all.length, "plater"], [lp, "LP"], [cd, "CD"], [artists, "artister"]].forEach(([n, t]) => {
@@ -145,11 +151,11 @@
       const src = coverSrc(r);
       if (src) { const i = el("img"); i.loading = "lazy"; i.alt = ""; i.src = src; c.append(i); }
       else { const p = el("div", "ph"); p.append(el("span", null, initials(r.artist))); c.append(p); }
-      c.append(el("span", "pill", r.format || "LP"));
+      c.append(el("span", "pill", fmtLabel(r)));
       const m = el("div", "meta");
       m.append(el("div", "al", r.album || "Uten tittel"), el("div", "ar", r.artist || ""), el("div", "yr", r.year ? String(r.year) : "—"));
       b.append(c, m);
-      b.setAttribute("aria-label", `${r.artist} – ${r.album}, ${r.year || "ukjent år"}, ${r.format}`);
+      b.setAttribute("aria-label", `${r.artist} – ${r.album}, ${r.year || "ukjent år"}, ${fmtLabel(r)}`);
       b.onclick = () => openDetail(r);
       g.append(b);
     }
@@ -343,7 +349,7 @@
     $("fArtist").value = o.artist || "";
     $("fAlbum").value = o.album || "";
     if (o.year) $("fYear").value = o.year;
-    if (o.format) $("fFmt").value = o.format;
+    if (o.format && !state.editing) setFormFmts([o.format]);
     $("results").textContent = "";
     if (!o.year && o.dzid) {
       try { const d = await deezer(`album/${o.dzid}`); const y = yearOf(d.release_date); if (y) $("fYear").value = y; } catch (e) {}
@@ -567,22 +573,56 @@
     return state.records.filter((r) => r.id !== exceptId && norm(r.artist) === a && norm(r.album) === b);
   }
   function dupText(d) {
-    const fm = [...new Set(d.map((r) => r.format))];
+    const fm = FMTS.filter((f) => d.some((r) => fmtsOf(r).includes(f)));
     const n = d.length;
     return `Du har allerede ${n === 1 ? "denne" : n + " eksemplarer av denne"} i samlingen (${fm.join(" og ")}).`;
   }
-  function resetDup() { if (dupArmed) { dupArmed = false; $("saveBtn").textContent = "Lagre"; const st = $("saveStatus"); st.textContent = ""; st.className = "status"; } }
+  function getFormFmts() { return FMTS.filter((f) => $("f" + f).checked); }
+  function setFormFmts(list) { FMTS.forEach((f) => { $("f" + f).checked = list.includes(f); }); }
+  let mergeTarget = null;
+  function resetDup() {
+    if (!dupArmed) return;
+    dupArmed = false; mergeTarget = null; $("mergeBtn").hidden = true;
+    $("saveBtn").textContent = "Lagre"; $("saveBtn").classList.remove("secondary"); const st = $("saveStatus"); st.textContent = ""; st.className = "status";
+  }
+  FMTS.forEach((f) => $("f" + f).addEventListener("change", resetDup));
+  async function storeRec(rec) {
+    await putRec(rec); cloudSave(rec);
+    const i = state.records.findIndex((x) => x.id === rec.id);
+    if (i >= 0) state.records[i] = rec; else state.records.push(rec);
+  }
+  async function dropRec(id) {
+    await delRec(id); cloudDel(id);
+    state.records = state.records.filter((x) => x.id !== id);
+    const u = urlCache.get(id); if (u) { URL.revokeObjectURL(u.url); urlCache.delete(id); }
+  }
+  // Slår sammen flere registreringer av samme album til én, med alle formatene krysset av.
+  async function mergeInto(target, others, extra) {
+    const all = [target, ...others];
+    const formats = FMTS.filter((f) => all.some((r) => fmtsOf(r).includes(f)) || (extra && extra.formats.includes(f)));
+    const rec = Object.assign({}, target, { formats, format: formats[0], updatedAt: Date.now() });
+    if (!rec.cover && !rec.coverUrl) {
+      const withCover = (extra && (extra.cover || extra.coverUrl)) ? extra : others.find((r) => r.cover || r.coverUrl);
+      if (withCover) { rec.cover = withCover.cover || null; rec.coverUrl = withCover.coverUrl || null; }
+    }
+    if (!rec.year) rec.year = (extra && extra.year) || (others.find((r) => r.year) || {}).year || null;
+    if (!(rec.tracks && rec.tracks.length)) { const t = others.find((r) => r.tracks && r.tracks.length); if (t) { rec.tracks = t.tracks; rec.src = t.src || rec.src || null; } }
+    if (!rec.addedAt || others.some((r) => r.addedAt && r.addedAt < rec.addedAt)) rec.addedAt = Math.min(...all.map((r) => r.addedAt || Date.now()));
+    await storeRec(rec);
+    for (const o of others) await dropRec(o.id);
+    return rec;
+  }
   ["fArtist", "fAlbum"].forEach((id) => $(id).addEventListener("input", resetDup));
   function openForm(r) {
     state.editing = r; state.coverBlob = null; state.coverUrl = null; state.coverChanged = false; state.source = null; state.origBlob = null;
     $("formTitle").textContent = r ? "Rediger plate" : "Ny plate";
     $("finder").hidden = !!r;
     $("fArtist").value = (r && r.artist) || ""; $("fAlbum").value = (r && r.album) || "";
-    $("fYear").value = (r && r.year) || ""; $("fFmt").value = (r && r.format) || "LP";
+    $("fYear").value = (r && r.year) || ""; setFormFmts(r ? fmtsOf(r) : ["LP"]);
     $("sArtist").value = ""; $("sAlbum").value = ""; $("codeInput").value = "";
     $("searchBox").hidden = true; $("manualCode").hidden = true; $("results").textContent = "";
     $("delBtn").hidden = !r; delArmed = false; $("delBtn").textContent = "Slett";
-    dupArmed = false; $("saveBtn").textContent = "Lagre";
+    dupArmed = false; mergeTarget = null; $("mergeBtn").hidden = true; $("saveBtn").textContent = "Lagre"; $("saveBtn").classList.remove("secondary");
     setFind(""); const ss = $("saveStatus"); ss.textContent = ""; ss.className = "status";
     showPhoto(r ? coverSrc(r) : ""); $("photo").value = ""; updateAdjust();
     $("ov").hidden = false;
@@ -596,20 +636,31 @@
     const yRaw = $("fYear").value.trim(); const year = yRaw ? Number(yRaw) : null;
     if (!artist || !album) { st.className = "status err"; st.textContent = "Fyll inn både artist og album."; return; }
     if (yRaw && (!Number.isInteger(year) || year < 1900 || year > 2100)) { st.className = "status err"; st.textContent = "Året må være fire siffer, f.eks. 1979."; return; }
+    const formats = getFormFmts();
+    if (!formats.length) { st.className = "status err"; st.textContent = "Kryss av for LP, CD eller begge."; return; }
     const isEdit = !!state.editing;
     const dupes = findDupes(artist, album, state.editing && state.editing.id);
     if (dupes.length && !dupArmed) {
       dupArmed = true;
       st.className = "status err";
-      st.textContent = dupText(dupes) + " Trykk «Lagre likevel» hvis du vil legge den inn en gang til.";
-      $("saveBtn").textContent = "Lagre likevel";
+      const missing = !isEdit && dupes.length === 1 ? formats.filter((f) => !fmtsOf(dupes[0]).includes(f)) : [];
+      if (missing.length) {
+        mergeTarget = dupes[0];
+        st.textContent = `Du har allerede denne som ${fmtLabel(dupes[0])}. Vil du krysse av ${missing.join(" og ")} på den du har, så den ligger i begge hyllene?`;
+        $("mergeBtn").textContent = `Legg ${missing.join(" og ")} til den du har`;
+        $("mergeBtn").hidden = false;
+        $("saveBtn").textContent = "Lagre som egen plate"; $("saveBtn").classList.add("secondary");
+      } else {
+        st.textContent = dupText(dupes) + " Trykk «Lagre likevel» hvis du vil legge den inn en gang til.";
+        $("saveBtn").textContent = "Lagre likevel";
+      }
       return;
     }
     const base = state.editing || { id: "r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), addedAt: Date.now(), cover: null, coverUrl: null };
-    const rec = Object.assign({}, base, { artist, album, year, format: $("fFmt").value, updatedAt: Date.now() });
+    const rec = Object.assign({}, base, { artist, album, year, formats, format: formats[0], updatedAt: Date.now() });
     // Ny kilde valgt, eller artist/album endret: sporlisten må hentes på nytt
     if (state.source) { rec.src = state.source; rec.tracks = null; }
-    else if (base.artist !== artist || base.album !== album || base.format !== rec.format) { rec.src = null; rec.tracks = null; }
+    else if (base.artist !== artist || base.album !== album || fmtsOf(base)[0] !== formats[0]) { rec.src = null; rec.tracks = null; }
     if (state.coverChanged) { rec.cover = state.coverBlob || null; rec.coverUrl = state.coverUrl || null; }
     $("saveBtn").disabled = true;
     try {
@@ -634,6 +685,18 @@
       const u = urlCache.get(id); if (u) { URL.revokeObjectURL(u.url); urlCache.delete(id); }
       render(); closeForm(); toast("Plata er slettet");
     } catch (err) { const s = $("saveStatus"); s.className = "status err"; s.textContent = "Kunne ikke slette. Prøv igjen."; }
+  };
+
+  $("mergeBtn").onclick = async () => {
+    if (!mergeTarget) return;
+    const extra = { formats: getFormFmts(), year: Number($("fYear").value) || null,
+      cover: state.coverChanged ? state.coverBlob : null, coverUrl: state.coverChanged ? state.coverUrl : null };
+    $("mergeBtn").disabled = true;
+    try {
+      const rec = await mergeInto(mergeTarget, [], extra);
+      render(); closeForm(); toast(`«${rec.album}» ligger nå under ${fmtLabel(rec)}`);
+    } catch (e) { const st = $("saveStatus"); st.className = "status err"; st.textContent = "Kunne ikke lagre. Prøv igjen."; }
+    finally { $("mergeBtn").disabled = false; }
   };
 
   /* ---------------- Sporliste ---------------- */
@@ -670,7 +733,7 @@
     const src = rec.src || {};
     const tries = [];
     if (src.relid) tries.push(async () => fromMbRelease(await mb(`/release/${src.relid}?inc=recordings`)));
-    if (src.rgid) tries.push(() => tracksFromMbRg(src.rgid, rec.format));
+    if (src.rgid) tries.push(() => tracksFromMbRg(src.rgid, fmtsOf(rec)[0]));
     if (src.dzid) tries.push(() => tracksFromDeezer(src.dzid));
     if (src.itid) tries.push(() => tracksFromItunes(src.itid));
     // Uten kjent kilde: søk på artist og album
@@ -678,7 +741,7 @@
       const q = `release:"${luceneEsc(rec.album)}" AND artist:"${luceneEsc(rec.artist)}"`;
       const d = await mb(`/release/?query=${encodeURIComponent(q)}&limit=10`);
       const good = (d.releases || []).filter((r) => (r.score || 0) >= 80);
-      const rel = pickRelease(good, rec.format);
+      const rel = pickRelease(good, fmtsOf(rec)[0]);
       return rel ? fromMbRelease(await mb(`/release/${rel.id}?inc=recordings`)) : [];
     });
     tries.push(async () => {
@@ -707,7 +770,8 @@
     else { const p = el("div", "ph"); p.append(el("span", null, initials(r.artist))); box.append(p); }
     $("dAlbum").textContent = r.album || "Uten tittel";
     $("dArtist").textContent = r.artist || "";
-    $("dMeta").textContent = [r.year || "Ukjent år", r.format].filter(Boolean).join(" · ");
+    $("dMeta").textContent = [r.year || "Ukjent år", fmtLabel(r)].filter(Boolean).join(" · ");
+    updateDetailMerge(r);
     $("dov").hidden = false;
     showTracks(r);
   }
@@ -743,6 +807,25 @@
     }
   }
   $("dClose").onclick = closeDetail;
+  let dMergeArmed = false;
+  function updateDetailMerge(r) {
+    const d = findDupes(r.artist, r.album, r.id);
+    const b = $("dMerge"); dMergeArmed = false;
+    b.hidden = !d.length;
+    if (!d.length) return;
+    const all = FMTS.filter((f) => [r, ...d].some((x) => fmtsOf(x).includes(f)));
+    b.dataset.label = all.length > fmtsOf(r).length ? `Slå sammen til én plate (${all.join(" + ")})` : `Slå sammen ${d.length + 1} like plater`;
+    b.textContent = b.dataset.label;
+  }
+  $("dMerge").onclick = async () => {
+    const r = detailRec; if (!r) return;
+    const d = findDupes(r.artist, r.album, r.id); if (!d.length) return;
+    if (!dMergeArmed) { dMergeArmed = true; $("dMerge").textContent = "Trykk igjen for å slå sammen"; return; }
+    try {
+      const rec = await mergeInto(r, d);
+      render(); openDetail(rec); toast(`Slått sammen: ${fmtLabel(rec)}`);
+    } catch (e) { toast("Kunne ikke slå sammen. Prøv igjen."); }
+  };
   $("dEdit").onclick = () => { const r = detailRec; closeDetail(); if (r) openForm(r); };
   $("dRetry").onclick = () => { if (detailRec) showTracks(detailRec, true); };
   $("dov").addEventListener("click", (e) => { if (e.target === $("dov")) closeDetail(); });
@@ -781,7 +864,7 @@
       for (const o of data.records) {
         if (!o || !o.id || !o.artist) continue;
         const rec = { id: String(o.id), artist: String(o.artist), album: String(o.album || ""), year: Number(o.year) || null,
-          format: o.format === "CD" ? "CD" : "LP", addedAt: Number(o.addedAt) || Date.now(), coverUrl: o.coverUrl || null, cover: null,
+          format: o.format === "CD" ? "CD" : "LP", formats: Array.isArray(o.formats) ? o.formats : null, addedAt: Number(o.addedAt) || Date.now(), coverUrl: o.coverUrl || null, cover: null,
           src: o.src || null, tracks: Array.isArray(o.tracks) ? o.tracks : null };
         if (o.coverData) rec.cover = await dataToBlob(o.coverData);
         rec.updatedAt = Date.now();
