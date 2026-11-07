@@ -355,7 +355,7 @@
     const c = await fetchCover(o).catch(() => null);
     const dupes = findDupes($("fArtist").value, $("fAlbum").value, state.editing && state.editing.id);
     const dupNote = dupes.length ? " Obs: " + dupText(dupes) : "";
-    if (c) { state.coverBlob = c.blob; state.coverUrl = c.url; state.coverChanged = true; showPhoto(c.blob ? URL.createObjectURL(c.blob) : c.url); setFind("Fylt ut. Sjekk og trykk Lagre." + dupNote, !!dupes.length); }
+    if (c) { state.coverBlob = c.blob; state.coverUrl = c.url; state.coverChanged = true; showPhoto(c.blob ? URL.createObjectURL(c.blob) : c.url); updateAdjust(); setFind("Fylt ut. Sjekk og trykk Lagre." + dupNote, !!dupes.length); }
     else setFind("Fylt ut. Fant ikke cover, så ta gjerne et eget bilde." + dupNote, !!dupes.length);
   }
   async function doBarcode(code) {
@@ -443,14 +443,120 @@
       img.src = url;
     });
   }
+  /* ---------------- Beskjæring: dra, zoom og roter coverbildet ---------------- */
+  const OUT = 700;
+  const crop = { img: null, url: null, rot: 0, zoom: 1, x: 0, y: 0, V: 300, resolve: null, ptrs: new Map(), pinch: null };
+  function cropDims() {
+    const w = crop.img.naturalWidth, h = crop.img.naturalHeight;
+    return crop.rot % 180 ? { w: h, h: w } : { w, h };
+  }
+  function cropScale() { const d = cropDims(); return (crop.V / Math.min(d.w, d.h)) * crop.zoom; }
+  function clampCrop() {
+    const d = cropDims(), s = cropScale();
+    const mx = Math.max(0, (d.w * s - crop.V) / 2), my = Math.max(0, (d.h * s - crop.V) / 2);
+    crop.x = Math.min(mx, Math.max(-mx, crop.x)); crop.y = Math.min(my, Math.max(-my, crop.y));
+  }
+  function drawCrop() {
+    clampCrop();
+    crop.img.style.transform = `translate(-50%, -50%) translate(${crop.x}px, ${crop.y}px) rotate(${crop.rot}deg) scale(${cropScale()})`;
+    $("cropZoom").value = String(crop.zoom);
+  }
+  function setZoom(z, cx = 0, cy = 0) {
+    const old = crop.zoom; z = Math.min(5, Math.max(1, z));
+    // Zoom rundt punktet (cx, cy) i forhold til midten av rammen
+    crop.x = cx - (cx - crop.x) * (z / old); crop.y = cy - (cy - crop.y) * (z / old);
+    crop.zoom = z; drawCrop();
+  }
+  function openCropper(src) {
+    return new Promise((resolve) => {
+      const img = $("cropImg");
+      crop.resolve = resolve; crop.rot = 0; crop.zoom = 1; crop.x = 0; crop.y = 0; crop.ptrs.clear(); crop.pinch = null;
+      if (crop.url) URL.revokeObjectURL(crop.url);
+      crop.url = src instanceof Blob ? URL.createObjectURL(src) : null;
+      img.onload = () => {
+        crop.img = img;
+        $("cov").hidden = false;
+        crop.V = $("cropFrame").getBoundingClientRect().width || 300;
+        img.style.width = img.naturalWidth + "px"; img.style.height = img.naturalHeight + "px";
+        drawCrop();
+      };
+      img.onerror = () => { finishCrop(null); setFind("Bildet kunne ikke leses.", true); };
+      img.src = crop.url || src;
+    });
+  }
+  function finishCrop(blob) {
+    $("cov").hidden = true;
+    const r = crop.resolve; crop.resolve = null;
+    if (r) r(blob);
+  }
+  function exportCrop() {
+    const n = Math.min(OUT, Math.round(Math.min(cropDims().w, cropDims().h) / crop.zoom)) || OUT;
+    const k = n / crop.V;
+    const cv = document.createElement("canvas"); cv.width = cv.height = n;
+    const ctx = cv.getContext("2d");
+    ctx.fillStyle = "#111"; ctx.fillRect(0, 0, n, n);
+    ctx.translate(n / 2 + crop.x * k, n / 2 + crop.y * k);
+    ctx.rotate((crop.rot * Math.PI) / 180);
+    const s = cropScale() * k;
+    ctx.scale(s, s);
+    ctx.drawImage(crop.img, -crop.img.naturalWidth / 2, -crop.img.naturalHeight / 2);
+    return new Promise((res) => cv.toBlob((b) => res(b), "image/jpeg", 0.85));
+  }
+  (function wireCropper() {
+    const frame = $("cropFrame");
+    const pt = (e) => { const r = frame.getBoundingClientRect(); return { x: e.clientX - r.left - r.width / 2, y: e.clientY - r.top - r.height / 2 }; };
+    frame.addEventListener("pointerdown", (e) => { frame.setPointerCapture(e.pointerId); crop.ptrs.set(e.pointerId, pt(e)); crop.pinch = null; });
+    frame.addEventListener("pointermove", (e) => {
+      if (!crop.ptrs.has(e.pointerId)) return;
+      const prev = crop.ptrs.get(e.pointerId), now = pt(e);
+      crop.ptrs.set(e.pointerId, now);
+      if (crop.ptrs.size === 1) { crop.x += now.x - prev.x; crop.y += now.y - prev.y; drawCrop(); return; }
+      const [a, b] = [...crop.ptrs.values()];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y), mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      if (crop.pinch) {
+        crop.x += mid.x - crop.pinch.mid.x; crop.y += mid.y - crop.pinch.mid.y;
+        setZoom(crop.zoom * (dist / crop.pinch.dist), mid.x, mid.y);
+      }
+      crop.pinch = { dist, mid };
+    });
+    const up = (e) => { crop.ptrs.delete(e.pointerId); crop.pinch = null; };
+    frame.addEventListener("pointerup", up); frame.addEventListener("pointercancel", up);
+    frame.addEventListener("wheel", (e) => { e.preventDefault(); const p = pt(e); setZoom(crop.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), p.x, p.y); }, { passive: false });
+    frame.addEventListener("keydown", (e) => {
+      const step = 12, m = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] }[e.key];
+      if (m) { e.preventDefault(); crop.x += m[0]; crop.y += m[1]; drawCrop(); }
+      if (e.key === "+" || e.key === "=") setZoom(crop.zoom * 1.1);
+      if (e.key === "-") setZoom(crop.zoom / 1.1);
+    });
+    $("cropZoom").addEventListener("input", (e) => setZoom(Number(e.target.value)));
+    $("cropRotate").onclick = () => { crop.rot = (crop.rot + 90) % 360; const t = crop.x; crop.x = -crop.y; crop.y = t; drawCrop(); };
+    $("cropReset").onclick = () => { crop.zoom = 1; crop.x = 0; crop.y = 0; drawCrop(); };
+    $("cropCancel").onclick = () => finishCrop(null);
+    $("cropOk").onclick = async () => { $("cropOk").disabled = true; try { finishCrop(await exportCrop()); } finally { $("cropOk").disabled = false; } };
+    window.addEventListener("resize", () => { if (!$("cov").hidden) { const r = crop.V; crop.V = frame.getBoundingClientRect().width || r; crop.x *= crop.V / r; crop.y *= crop.V / r; drawCrop(); } });
+  })();
+
+  function setCover(blob) {
+    state.coverBlob = blob; state.coverUrl = null; state.coverChanged = true;
+    showPhoto(URL.createObjectURL(blob)); updateAdjust();
+  }
+  function currentCoverBlob() {
+    if (state.coverChanged) return state.coverBlob || null;
+    return state.editing && state.editing.cover instanceof Blob ? state.editing.cover : null;
+  }
+  function updateAdjust() { $("adjustBtn").hidden = !(state.origBlob || currentCoverBlob()); }
   $("photo").addEventListener("change", async (e) => {
-    const f = e.target.files && e.target.files[0]; if (!f) return;
-    try {
-      const b = await shrink(f, 700, 0.82);
-      state.coverBlob = b; state.coverUrl = null; state.coverChanged = true;
-      showPhoto(URL.createObjectURL(b));
-    } catch (err) { setFind(err.message, true); }
+    const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return;
+    state.origBlob = f;
+    const b = await openCropper(f);
+    if (b) setCover(b);
+    updateAdjust();
   });
+  $("adjustBtn").onclick = async () => {
+    const src = state.origBlob || currentCoverBlob(); if (!src) return;
+    const b = await openCropper(src);
+    if (b) setCover(b);
+  };
 
   /* ---------------- Form ---------------- */
   let delArmed = false, dupArmed = false;
@@ -468,7 +574,7 @@
   function resetDup() { if (dupArmed) { dupArmed = false; $("saveBtn").textContent = "Lagre"; const st = $("saveStatus"); st.textContent = ""; st.className = "status"; } }
   ["fArtist", "fAlbum"].forEach((id) => $(id).addEventListener("input", resetDup));
   function openForm(r) {
-    state.editing = r; state.coverBlob = null; state.coverUrl = null; state.coverChanged = false; state.source = null;
+    state.editing = r; state.coverBlob = null; state.coverUrl = null; state.coverChanged = false; state.source = null; state.origBlob = null;
     $("formTitle").textContent = r ? "Rediger plate" : "Ny plate";
     $("finder").hidden = !!r;
     $("fArtist").value = (r && r.artist) || ""; $("fAlbum").value = (r && r.album) || "";
@@ -478,7 +584,7 @@
     $("delBtn").hidden = !r; delArmed = false; $("delBtn").textContent = "Slett";
     dupArmed = false; $("saveBtn").textContent = "Lagre";
     setFind(""); const ss = $("saveStatus"); ss.textContent = ""; ss.className = "status";
-    showPhoto(r ? coverSrc(r) : ""); $("photo").value = "";
+    showPhoto(r ? coverSrc(r) : ""); $("photo").value = ""; updateAdjust();
     $("ov").hidden = false;
   }
   function closeForm() { stopScan(); $("ov").hidden = true; state.editing = null; render(); }

@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="styles.css?v=2.2">
+<link rel="stylesheet" href="styles.css?v=2.3">
 </head>
 <body>
 <div class="wrap">
@@ -32,7 +32,7 @@
     <label class="menu-file">Hent inn backup (importer)<input type="file" id="importFile" accept="application/json,.json"></label>
     <a href="privacy.html">Personvern</a>
     <p class="menu-note">Samlingen lagres bare på denne enheten. Albuminfo og cover hentes fra <a href="https://musicbrainz.org" target="_blank" rel="noopener">MusicBrainz</a> og Cover Art Archive.</p>
-    <p class="menu-note">Versjon 2.2</p>
+    <p class="menu-note">Versjon 2.3</p>
   </div>
 
   <div class="cloud-banner" id="cloudBanner" hidden>
@@ -92,7 +92,8 @@
       <div class="photo" id="photoBox"></div>
       <div class="photo-actions">
         <span class="btn ghost filebtn">Ta eget bilde av cover<input type="file" id="photo" accept="image/*" capture="environment" aria-label="Ta eget bilde av coveret"></span>
-        <p class="hint">Coveret hentes automatisk når du skanner eller søker. Ta eget bilde hvis det mangler.</p>
+        <button class="btn ghost" type="button" id="adjustBtn" hidden>Juster bildet</button>
+        <p class="hint">Coveret hentes automatisk når du skanner eller søker. Tar du eget bilde, kan du flytte og zoome det på plass.</p>
       </div>
     </div>
 
@@ -131,8 +132,30 @@
     <ol class="tracks" id="dTracks"></ol>
   </section>
 </div>
+<!-- Beskjæring av coverbilde -->
+<div class="overlay crop-ov" id="cov" hidden>
+  <section class="sheet crop-sheet" aria-labelledby="cropTitle">
+    <div class="sheet-head"><h2 id="cropTitle">Juster coveret</h2></div>
+    <p class="hint">Dra bildet på plass. Klyp med to fingre eller bruk glideren for å zoome.</p>
+    <div class="crop-frame" id="cropFrame" tabindex="0" aria-label="Coverbilde. Bruk piltastene for å flytte, pluss og minus for å zoome.">
+      <img id="cropImg" alt="" draggable="false">
+      <div class="crop-grid" aria-hidden="true"></div>
+    </div>
+    <div class="crop-tools">
+      <label class="crop-zoom" for="cropZoom"><span>Zoom</span><input type="range" id="cropZoom" min="1" max="5" step="0.01" value="1"></label>
+      <button class="btn ghost small" type="button" id="cropRotate">Roter 90°</button>
+      <button class="btn ghost small" type="button" id="cropReset">Tilbakestill</button>
+    </div>
+    <div class="sheet-foot">
+      <div class="right">
+        <button class="btn ghost" type="button" id="cropCancel">Avbryt</button>
+        <button class="btn primary" type="button" id="cropOk">Bruk bildet</button>
+      </div>
+    </div>
+  </section>
+</div>
 <div class="toast" id="toast" hidden></div>
-<script src="app.js?v=2.2"></script>
-<script type="module" src="cloud.js?v=2.2"></script>
+<script src="app.js?v=2.3"></script>
+<script type="module" src="cloud.js?v=2.3"></script>
 </body>
 </html>
